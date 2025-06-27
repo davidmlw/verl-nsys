@@ -162,7 +162,7 @@ def initialize(config, backend) -> Tuple[Union[AsyncLLMServerManager, ray.actor.
     return server, server_address, dataloader
 
 
-async def perf_without_chat_scheduler(backend, n_gpus_per_node):
+async def perf_without_chat_scheduler(backend, n_gpus_per_node, max_steps=5):
     """Perf test AsyncLLM without chat_scheduler."""
     config = init_config(n_gpus_per_node)
     server, server_address, dataloader = initialize(config, backend)
@@ -200,12 +200,13 @@ async def perf_without_chat_scheduler(backend, n_gpus_per_node):
         sleep_time = t_end - t_gen_end
         step_time = t_end - t_start
         print(f"[DEBUG] backend: {backend}, n_gpus_per_node: {n_gpus_per_node}, use_chat_scheduler: True, batch_size: {len(messages)}, step: {step}, step time: {step_time:.2f} secs, wake_up_time: {wake_up_time:.2f} secs, gen_time: {gen_time:.2f} secs, sleep_time: {sleep_time:.2f} secs")
-        break
+        if step >= max_steps - 1:
+            break
 
     ray.shutdown()
 
 
-def perf_with_chat_scheduler(backend, n_gpus_per_node):
+def perf_with_chat_scheduler(backend, n_gpus_per_node, max_steps=5):
     """Perf test AsyncLLM with chat_scheduler."""
     assert backend == "external"
 
@@ -226,12 +227,13 @@ def perf_with_chat_scheduler(backend, n_gpus_per_node):
         sleep_time = t_end - t_gen_end
         step_time = t_end - t_start
         print(f"[DEBUG] backend: {backend}, n_gpus_per_node: {n_gpus_per_node}, use_chat_scheduler: True, batch_size: {len(gen_batch)}, step: {step}, step time: {step_time:.2f} secs, wake_up_time: {wake_up_time:.2f} secs, gen_time: {gen_time:.2f} secs, sleep_time: {sleep_time:.2f} secs")
-        break
+        if step >= max_steps - 1:
+            break
 
     ray.shutdown()
 
 
-def perf_sync_llm(backend, n_gpus_per_node):
+def perf_sync_llm(backend, n_gpus_per_node, max_steps=5):
     """Perf test sync LLM."""
     config = init_config(n_gpus_per_node)
     config.actor_rollout_ref.rollout.mode = "sync"
@@ -247,23 +249,24 @@ def perf_sync_llm(backend, n_gpus_per_node):
         gen_batch = actor_rollout_wg.generate_sequences(batch)
         t_end = time.time()
         print(f"[DEBUG] backend: {backend}, n_gpus_per_node: {n_gpus_per_node}, use_chat_scheduler: False, batch_size: {len(gen_batch)}, step: {step}, step_time: {t_end - t_start:.2f} secs")
-        break
+        if step >= max_steps - 1:
+            break
 
     ray.shutdown()
 
 
 if __name__ == "__main__":
     # Perf test sync LLM
-    perf_sync_llm(backend="sync", n_gpus_per_node=2)
+    perf_sync_llm(backend="sync", n_gpus_per_node=2, max_steps=5)
 
     # Perf test AsyncLLM backend:
     # - cgraph: default RayDistributedExecutor with compiled graph
     # - external: ExternalRayDistributedExecutor with remote call
-    asyncio.run(perf_without_chat_scheduler(backend="cgraph", n_gpus_per_node=2))
-    asyncio.run(perf_without_chat_scheduler(backend="external", n_gpus_per_node=2))
+    asyncio.run(perf_without_chat_scheduler(backend="cgraph", n_gpus_per_node=2, max_steps=5))
+    asyncio.run(perf_without_chat_scheduler(backend="external", n_gpus_per_node=2, max_steps=5))
 
     # Perf test ChatScheduler scalibility:
     # - n_gpus_per_node=2: 1 instance
     # - n_gpus_per_node=8: 4 instances
-    perf_with_chat_scheduler(backend="external", n_gpus_per_node=2)
-    perf_with_chat_scheduler(backend="external", n_gpus_per_node=8)
+    perf_with_chat_scheduler(backend="external", n_gpus_per_node=2, max_steps=5)
+    perf_with_chat_scheduler(backend="external", n_gpus_per_node=8, max_steps=5)

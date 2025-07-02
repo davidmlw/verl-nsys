@@ -29,6 +29,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy, Place
 from verl.protocol import DataProto, _padding_size_key
 from verl.single_controller.base import ClassWithInitArgs, ResourcePool, Worker, WorkerGroup
 from verl.single_controller.base.decorator import MAGIC_ATTR, Dispatch
+from verl.utils.debug import marked_timer
 
 __all__ = ["Worker"]
 
@@ -44,18 +45,25 @@ def get_random_string(length: int) -> str:
 def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, blocking):
     class Functor:
         def __call__(this, *args, **kwargs):
-            args, kwargs = dispatch_fn(self, *args, **kwargs)
-            padding_count = kwargs.pop(_padding_size_key, 0)
-            output = execute_fn(method_name, *args, **kwargs)
-            if blocking:
-                output = ray.get(output)
-            output = collect_fn(self, output)
-            if padding_count > 0:
-                if isinstance(output, DataProto):
-                    indices = [i for i in range(len(output))][:-padding_count]
-                    output = output.select_idxs(indices)
-                elif isinstance(output, list):
-                    output = output[:-padding_count]
+            timing_raw = {}
+            output = None
+            with marked_timer(method_name, timing_raw, color="green"):
+                with marked_timer("dispatch_fn", timing_raw, color="yellow"):
+                    args, kwargs = dispatch_fn(self, *args, **kwargs)
+                    padding_count = kwargs.pop(_padding_size_key, 0)
+                with marked_timer("execute_fn", timing_raw, color="red"):
+                    output = execute_fn(method_name, *args, **kwargs)
+                    if blocking:
+                        output = ray.get(output)
+                with marked_timer("collect_fn", timing_raw, color="blue"):
+                    output = collect_fn(self, output)
+                    if padding_count > 0:
+                        if isinstance(output, DataProto):
+                            indices = [i for i in range(len(output))][:-padding_count]
+                            output = output.select_idxs(indices)
+                        elif isinstance(output, list):
+                            output = output[:-padding_count]
+            print(f"[DEBUG] {method_name} timing_raw: {timing_raw}")
             return output
 
     # use class type to pass the method_name to get a better observability

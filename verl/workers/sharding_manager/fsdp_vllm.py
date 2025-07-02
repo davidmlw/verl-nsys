@@ -40,6 +40,7 @@ from verl.utils.fsdp_utils import fsdp_version, layered_summon_lora_params, load
 from verl.utils.model import convert_weight_keys
 from verl.utils.torch_functional import check_device_is_available
 from verl.utils.vllm_utils import TensorLoRARequest, VLLMHijack, is_version_ge, patch_vllm_moe_model_weight_loader
+from verl.utils.debug import mark_annotation
 
 from .base import BaseShardingManager
 
@@ -98,6 +99,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
             VLLMHijack.hijack()
 
     @GPUMemoryLogger(role="fsdp vllm sharding_manager", logger=logger)
+    @mark_annotation(message="enter shard")
     def __enter__(self):
         def __collect_lora_params() -> OrderedDict:
             """
@@ -204,6 +206,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
                 get_torch_device().set_rng_state(self.gen_random_states)
 
     @GPUMemoryLogger(role="fsdp vllm sharding_manager", logger=logger)
+    @mark_annotation(message="exit shard")
     def __exit__(self, exc_type, exc_value, traceback):
         # TODO(ZSL): check this
         if vllm_version in (

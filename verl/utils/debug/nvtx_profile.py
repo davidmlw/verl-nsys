@@ -109,6 +109,8 @@ class NsightSystemsProfiler(DistProfiler):
         elif config.ranks is not None:
             self.this_rank = rank in config.ranks
 
+        print(f"[DEBUG] NsightSystemsProfiler init: rank: {rank}, this_rank: {self.this_rank}, discrete: {self.discrete}")
+
     def start(self):
         if self.this_rank:
             self.this_step = True

@@ -140,6 +140,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         if self._is_ref:
             profiler_config = omega_conf_to_dataclass(config.ref.get("profiler", {}), ProfilerConfig)
 
+        print(f"[DEBUG] ActorRolloutRefWorker init: rank: {self.rank}, profiler_config: {profiler_config}")
+
         DistProfilerExtension.__init__(self, DistProfiler(rank=self.rank, config=profiler_config))
 
         self._is_offload_param = False

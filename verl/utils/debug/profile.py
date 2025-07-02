@@ -215,3 +215,9 @@ class DistProfilerExtension:
     def stop_profile(self) -> None:
         """Stop profiling for the current rank in the current training step."""
         self.profiler.stop()
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def test_ray_empty_function(self) -> None:
+        """run an empty function by ray"""
+        print(f"[DEBUG] test_ray_empty_function")
+        pass

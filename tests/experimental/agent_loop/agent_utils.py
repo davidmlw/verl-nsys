@@ -14,7 +14,7 @@
 from typing import Union
 
 import ray
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from verl.experimental.agent_loop import AgentLoopManager
 from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup
@@ -40,15 +40,25 @@ def init_agent_loop_manager(config: DictConfig) -> Union[AgentLoopManager, RayWo
     resource_pool_manager.create_resource_pool()
     resource_pool_to_cls = {pool: {} for pool in resource_pool_manager.resource_pool_dict.values()}
 
+    #print(f"[DEBUG] config: {config}")
+    #print(f"[DEBUG] config.actor_rollout_ref: {config.actor_rollout_ref}")
+    print(f"[DEBUG] config all_ranks: {config.actor_rollout_ref.rollout.profiler.all_ranks}")
     # create actor and rollout
     resource_pool = resource_pool_manager.get_resource_pool(Role.ActorRollout)
     actor_rollout_cls = RayClassWithInitArgs(cls=role_worker_mapping[Role.ActorRollout], config=config.actor_rollout_ref, role="actor_rollout")
     resource_pool_to_cls[resource_pool]["actor_rollout"] = actor_rollout_cls
 
     all_wg = {}
+    wg_kwargs = {}
+    if OmegaConf.select(config.trainer, "profile_steps") is not None:
+        wg_kwargs["profile_steps"] = OmegaConf.select(config.trainer, "profile_steps")
+        assert OmegaConf.select(config.trainer, "worker_nsight_options") is not None, "worker_nsight_options must be set when profile_steps is set"
+        wg_kwargs["worker_nsight_options"] = OmegaConf.to_container(OmegaConf.select(config.trainer, "worker_nsight_options"))
+    print(f"[DEBUG] wg_kwargs: {wg_kwargs}")
+
     for resource_pool, class_dict in resource_pool_to_cls.items():
         worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict)
-        wg_dict = RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=worker_dict_cls)
+        wg_dict = RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=worker_dict_cls, **wg_kwargs)
         spawn_wg = wg_dict.spawn(prefix_set=class_dict.keys())
         all_wg.update(spawn_wg)
     actor_rollout_wg = all_wg["actor_rollout"]

@@ -44,6 +44,7 @@ from verl.protocol import DataProto
 from verl.utils import hf_tokenizer
 from verl.utils.dataset import RLHFDataset
 from verl.utils.dataset.rl_dataset import collate_fn as default_collate_fn
+from verl.utils.debug import marked_timer
 
 
 def init_config(n_gpus_per_node) -> DictConfig:
@@ -59,6 +60,9 @@ def init_config(n_gpus_per_node) -> DictConfig:
     config.actor_rollout_ref.rollout.prompt_length = 4096
     config.actor_rollout_ref.rollout.response_length = 4096
     config.actor_rollout_ref.rollout.n = 16
+    #config.actor_rollout_ref.rollout.profiler.all_ranks = True
+    config.actor_rollout_ref.rollout.profiler.ranks = [0,1]
+    config.trainer.profile_steps = [1]
 
     # test sleep/wake_up with fsdp offload
     config.actor_rollout_ref.actor.fsdp_config.param_offload = True
@@ -76,6 +80,7 @@ def initialize(config, backend) -> Tuple[Union[AgentLoopManager, RayWorkerGroup]
     ray.init(runtime_env={"env_vars": env_vars})
 
     # STEP 1: init async llm server
+    print(f"[DEBUG] config all_ranks: {config.actor_rollout_ref.rollout.profiler.all_ranks}")
     server = init_agent_loop_manager(config)
 
     # STEP 2: create dataloader
@@ -102,27 +107,53 @@ def perf_rollout(mode, backend, n_gpus_per_node, num_steps):
     config.actor_rollout_ref.rollout.mode = mode
     agent_loop_manager, dataloader = initialize(config, backend)
 
-    for step, batch in enumerate(dataloader):
-        batch: DataProto = DataProto.from_single_dict(batch)
-        batch = batch.pop(
-            batch_keys=["input_ids", "attention_mask", "position_ids"],
-            non_tensor_batch_keys=["raw_prompt_ids", "raw_prompt"],
-        )
-        t_start = time.time()
-        gen_batch = agent_loop_manager.generate_sequences(batch)
-        t_end = time.time()
-        print(f"[DEBUG] backend: {backend}, n_gpus_per_node: {n_gpus_per_node}, batch_size: {len(gen_batch)}, step: {step}, step_time: {t_end - t_start:.2f} secs")
-        if step + 1 >= num_steps:
-            break
+    timing_raw = {}
+    with marked_timer("start_profile", timing_raw, color="green"):
+        if (mode == "async"):
+            agent_loop_manager.worker_group.start_profile()
+        else:
+            agent_loop_manager.start_profile()
 
+    for step, batch in enumerate(dataloader):
+
+        with marked_timer("step", timing_raw):
+            with marked_timer("test_ray_empty_function", timing_raw, color="purple"):
+                if (mode == "async"):
+                    agent_loop_manager.worker_group.test_ray_empty_function()
+                else:
+                    agent_loop_manager.test_ray_empty_function()
+
+            with marked_timer("batch", timing_raw, color="yellow"):
+                batch: DataProto = DataProto.from_single_dict(batch)
+                batch = batch.pop(
+                    batch_keys=["input_ids", "attention_mask", "position_ids"],
+                    non_tensor_batch_keys=["raw_prompt_ids", "raw_prompt"],
+                )
+
+            with marked_timer("gen", timing_raw, color="red"):
+                t_start = time.time()
+                gen_batch = agent_loop_manager.generate_sequences(batch)
+                t_end = time.time()
+                print(f"[DEBUG] backend: {backend}, n_gpus_per_node: {n_gpus_per_node}, batch_size: {len(gen_batch)}, step: {step}, step_time: {t_end - t_start:.2f} secs")
+
+            if step + 1 >= num_steps:
+                break
+
+    with marked_timer("stop_profile", timing_raw, color="blue"):
+        if (mode == "async"):
+            agent_loop_manager.worker_group.stop_profile()
+        else:
+            agent_loop_manager.stop_profile()
+
+    print(timing_raw)
     ray.shutdown()
 
-
 if __name__ == "__main__":
-    num_steps = 1
+    num_steps = 5
     n_gpus_per_node = 8
 
-    # test_cases = [("sync", "sync"), ("async", "zeromq"), ("async", "ray")]
-    test_cases = [("async", "zeromq"), ("async", "ray")]
+    test_cases = [("sync", "sync"), ("async", "zeromq"), ("async", "ray")]
+    # test_cases = [("async", "zeromq"), ("async", "ray")]
     for mode, backend in test_cases:
         perf_rollout(mode=mode, backend=backend, n_gpus_per_node=n_gpus_per_node, num_steps=num_steps)
+

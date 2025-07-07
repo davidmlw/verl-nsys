@@ -32,6 +32,7 @@ from verl.protocol import DataProto
 from verl.single_controller.ray.base import RayWorkerGroup
 from verl.utils import hf_tokenizer
 from verl.utils.fs import copy_to_local
+from verl.utils.debug import marked_timer, mark_annotate
 from verl.workers.rollout.async_server import async_server_class
 
 logger = logging.getLogger(__file__)
@@ -186,32 +187,39 @@ class AgentLoopWorker:
         Returns:
             DataProto: Output batch.
         """
-        config = self.config.actor_rollout_ref.rollout
-        sampling_params = dict(
-            temperature=config.temperature,
-            top_p=config.top_p,
-            repetition_penalty=1.0,
-        )
+        timing_raw = {}
+        with marked_timer("gen setup", timing_raw, color="green"):
+            config = self.config.actor_rollout_ref.rollout
+            sampling_params = dict(
+                temperature=config.temperature,
+                top_p=config.top_p,
+                repetition_penalty=1.0,
+            )
 
-        # override sampling params for validation
-        if batch.meta_info.get("validate", False):
-            sampling_params["top_p"] = config.val_kwargs.top_p
-            sampling_params["temperature"] = config.val_kwargs.temperature
+            # override sampling params for validation
+            if batch.meta_info.get("validate", False):
+                sampling_params["top_p"] = config.val_kwargs.top_p
+                sampling_params["temperature"] = config.val_kwargs.temperature
 
-        n = 1 if batch.meta_info.get("validate", False) else config.n
-        tasks = []
+            n = 1 if batch.meta_info.get("validate", False) else config.n
+            tasks = []
 
-        # by default, we assume it's a single turn agent
-        if "agent_name" not in batch.non_tensor_batch:
-            batch.non_tensor_batch["agent_name"] = np.array(["single_turn_agent"] * len(batch), dtype=object)
+            # by default, we assume it's a single turn agent
+            if "agent_name" not in batch.non_tensor_batch:
+                batch.non_tensor_batch["agent_name"] = np.array(["single_turn_agent"] * len(batch), dtype=object)
 
-        agent_names = batch.non_tensor_batch["agent_name"].repeat(n, axis=0)
-        raw_prompts = batch.non_tensor_batch["raw_prompt"].repeat(n, axis=0)
-        for agent_name, messages in zip(agent_names, raw_prompts):
-            tasks.append(asyncio.create_task(self._run_agent_loop(agent_name, messages.tolist(), sampling_params)))
-        outputs = await asyncio.gather(*tasks)
+            agent_names = batch.non_tensor_batch["agent_name"].repeat(n, axis=0)
+            raw_prompts = batch.non_tensor_batch["raw_prompt"].repeat(n, axis=0)
 
-        output = self._postprocess(outputs)
+        with marked_timer("run_agent_loop", timing_raw, color="red"):
+            for agent_name, messages in zip(agent_names, raw_prompts):
+                tasks.append(asyncio.create_task(self._run_agent_loop(agent_name, messages.tolist(), sampling_params)))
+            outputs = await asyncio.gather(*tasks)
+
+        with marked_timer("postprocess", timing_raw, color="blue"):
+            output = self._postprocess(outputs)
+
+        print(f"[DEBUG] timing_raw agent loop worker: {timing_raw}")
         return output
 
     async def _run_agent_loop(self, agent_name: str, messages: List[Dict[str, Any]], sampling_params: Dict[str, Any]) -> AgentLoopOutput:

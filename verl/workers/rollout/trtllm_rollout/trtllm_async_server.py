@@ -223,6 +223,11 @@ class TRTLLMHttpServer:
         elif self.rollout_mode == RolloutMode.STANDALONE:
             logger.info("skip sleep in standalone mode")
 
+    async def start_profile(self, **kwargs):
+        torch.cuda.profiler.start()
+
+    async def stop_profile(self, **kwargs):
+        torch.cuda.profiler.stop()
 
 _rollout_worker_actor_cls = ray.remote(ServerAdapter)
 
@@ -334,7 +339,16 @@ class TRTLLMReplica(RolloutReplica):
                 node_id=node_id,
                 soft=False,
             ),
-            runtime_env={"env_vars": {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"}},
+            runtime_env={
+                "env_vars": {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"},
+                #"nsight": {
+                #    "trace": "cuda,nvtx,cublas,ucx",
+                #    "cuda-memory-usage": "true",
+                #    "cuda-graph-trace": "graph",
+                #    "capture-range": "cudaProfilerApi",
+                #    "capture-range-end": "repeat-shutdown:3",
+                #}
+            },
             name=name,
         ).remote(
             config=self.config,

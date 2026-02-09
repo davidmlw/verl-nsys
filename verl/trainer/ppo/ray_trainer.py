@@ -1291,6 +1291,9 @@ class RayPPOTrainer:
             critic_output = self.critic_wg.update_critic(batch)
         return critic_output
 
+    def shutdown(self):
+        self.async_rollout_manager.shutdown()
+
     def fit(self):
         """
         The training loop of PPO.
@@ -1702,6 +1705,7 @@ class RayPPOTrainer:
                         self.actor_rollout_wg.async_calls_finalize_fn_exec(blocking=True)
                     pprint(f"Final validation metrics: {last_val_metrics}")
                     progress_bar.close()
+                    self.shutdown()
                     return
 
                 # this is experimental and may be changed/removed in the future

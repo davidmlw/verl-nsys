@@ -996,3 +996,6 @@ class AgentLoopManager:
             await asyncio.gather(*tasks)
 
         asyncio.run(run_all())
+
+    def shutdown(self):
+        self._run_all([replica.shutdown() for replica in self.rollout_replicas])

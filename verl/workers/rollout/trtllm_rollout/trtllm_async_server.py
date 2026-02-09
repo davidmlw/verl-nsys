@@ -229,6 +229,11 @@ class TRTLLMHttpServer:
     async def stop_profile(self, **kwargs):
         torch.cuda.profiler.stop()
 
+    async def shutdown(self):
+        """Shutdown the server."""
+        self.llm.shutdown()
+        pass
+
 _rollout_worker_actor_cls = ray.remote(ServerAdapter)
 
 
@@ -341,13 +346,13 @@ class TRTLLMReplica(RolloutReplica):
             ),
             runtime_env={
                 "env_vars": {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"},
-                #"nsight": {
-                #    "trace": "cuda,nvtx,cublas,ucx",
-                #    "cuda-memory-usage": "true",
-                #    "cuda-graph-trace": "graph",
-                #    "capture-range": "cudaProfilerApi",
-                #    "capture-range-end": "repeat-shutdown:3",
-                #}
+                "nsight": {
+                    "trace": "cuda,nvtx,cublas,ucx",
+                    "cuda-memory-usage": "true",
+                    "cuda-graph-trace": "graph",
+                    "capture-range": "cudaProfilerApi",
+                    "capture-range-end": "repeat-shutdown:4",
+                }
             },
             name=name,
         ).remote(

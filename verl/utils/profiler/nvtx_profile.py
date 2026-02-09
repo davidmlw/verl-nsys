@@ -131,10 +131,12 @@ class NsightSystemsProfiler(DistProfiler):
     def start(self, **kwargs):
         if not self.discrete:
             torch.cuda.profiler.start()
+            print("david: start profiler")
 
     def stop(self):
         if not self.discrete:
             torch.cuda.profiler.stop()
+            print("david: stop profiler")
 
     def annotate(
         self,
@@ -167,6 +169,7 @@ class NsightSystemsProfiler(DistProfiler):
 
                 if self.discrete:
                     torch.cuda.profiler.start()
+                    print(f"david: start profiler, {profile_name}")
                 mark_range = mark_start_range(message=profile_name, color=color, domain=domain, category=category)
 
                 result = func(*args, **kwargs_inner)
@@ -174,6 +177,7 @@ class NsightSystemsProfiler(DistProfiler):
                 mark_end_range(mark_range)
                 if self.discrete:
                     torch.cuda.profiler.stop()
+                    print(f"david: stop profiler, {profile_name}")
 
                 return result
 

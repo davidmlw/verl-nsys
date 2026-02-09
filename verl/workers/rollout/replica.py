@@ -255,6 +255,9 @@ class RolloutReplica(ABC):
         """Stop profiling on the replica."""
         await asyncio.gather(*[server.stop_profile.remote() for server in self.servers])
 
+    async def shutdown(self):
+        """Shutdown the replica."""
+        await asyncio.gather(*[server.shutdown.remote() for server in self.servers])
 
 class RolloutReplicaRegistry:
     """Factory for managing rollout replica implementations."""

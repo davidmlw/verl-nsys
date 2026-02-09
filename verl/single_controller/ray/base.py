@@ -636,6 +636,7 @@ class RayWorkerGroup(WorkerGroup):
                     "name": name,
                 }
             )
+            print(f"david: worker_nsight_options: {self.worker_nsight_options}")
         else:
             ray_cls_with_init.update_options({"runtime_env": {"env_vars": env_vars}, "name": name})
 
